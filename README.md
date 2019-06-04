@@ -1,7 +1,7 @@
 # bank-statement-analysis
 These python files can be used to better understand how you're spending your money.
 
-generate_database.py will gather your bank statement CSV files, and combine them into a single excel file with a spending graph, spending pie, and multiple transaction lists.
+statement_analysis.py will gather your bank statement CSV files, and combine them into a single excel file with a spending graph, spending pie, and multiple transaction lists.
 
 file description:
 
