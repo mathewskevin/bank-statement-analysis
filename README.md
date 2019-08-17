@@ -7,7 +7,9 @@ file description:
 
 bank_database.py - This python script will generate an excel analysis of the statement data in your bank account.
 
-bank_scrape.py - This python script will download and rename bank statement CSVs from a bank account.
+bank_scrape.py - This python script will download and rename bank statement CSVs from your bank account.
+
+config_pass.py - This python file stores the password and username for your bank account.
 
 lookup_table.xlsx - This excel file is a lookup table to classify your transactions into categories. You need to customize this file with your own transaction types.
 
