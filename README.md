@@ -5,10 +5,10 @@ statement_analysis.py will gather your bank statement CSV files, and combine the
 
 file description:
 
-statement_analysis.py - This python script will generate an excel analysis of the statement data in your bank account.
+bank_database.py - This python script will generate an excel analysis of the statement data in your bank account.
 
-statement_rename_csv.py - This python script will rename bank statement CSVs with unique filenames
+bank_scrape.py - This python script will download and rename bank statement CSVs from a bank account.
 
 lookup_table.xlsx - This excel file is a lookup table to classify your transactions into categories. You need to customize this file with your own transaction types.
 
-modules used: Pandas, NumPy, XlsxWriter, openpyxl, datetime
+modules used: Pandas, NumPy, XlsxWriter, openpyxl, datetime, selenium
