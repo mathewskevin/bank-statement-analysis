@@ -5,12 +5,33 @@
 # Automated web scraper for gathering bank statement CSVs in 90 day chunks.
 
 import webbrowser
-import config_pass
 from selenium import webdriver
 import pdb, time, sys, os
 import random, datetime
 from datetime import date, timedelta
 import pandas as pd
+
+#config_path = "D:\My_Storage\Workspace\bank-account-analysis-master\bank_files"
+config_path = "D:\My_Storage\My_Documents\bank-account-analysis-master\bank_files"
+sys.path.append(config_path) 
+import config_pass
+
+# enter password
+user_name = config_pass.BANK_USERNAME
+user_pass = config_pass.BANK_PASSWORD
+
+# input variables
+site_name = 'https://www.navyfederal.org/' # site name
+profile_loc = r'C:\Users\Kevin\AppData\Roaming\Mozilla\Firefox\Profiles\r5s0g7v9.default' # web browser profile
+credit_name = 'Visa Signature GO REWARDS - 5295' # credit account name
+checking_name = 'EveryDay Checking - 3969' # checking account name
+savings_name = 'Share Savings - 8327' # savings account name
+
+download_folder = r'C:\Users\Kevin\Downloads'
+#database_folder = r'D:\My_Storage\Workspace\navyfed-account-analysis-master'
+database_folder = r"D:\My_Storage\My_Documents\bank-account-analysis-master"
+database_file = database_folder + '\\database_file (please enable editing).xlsx'
+src = download_folder + '\\transactions.CSV'
 
 # calculate random time to simulate human input
 def rand_time(lower, upper):
@@ -188,18 +209,6 @@ def loop_csv(data_type):
 			pdb.set_trace()
 
 		time.sleep(0.5)
-		
-# input variables
-site_name = 'https://www.somebankwebsite.com/' # site name
-profile_loc = r'C:\Users\Bob\AppData\Roaming\Mozilla\Firefox\Profiles\r5s0g7v9.default' # web browser profile
-credit_name = 'Alice' # credit account name
-checking_name = 'Bob' # checking account name
-savings_name = 'Eve' # savings account name
-
-download_folder = r'C:\Users\Bob\Downloads'
-database_folder = r'---'
-database_file = database_folder + '\\database_file (please enable editing).xlsx'
-src = download_folder + '\\transactions.CSV'
 
 # determine date_list
 date_list = date_list()
@@ -215,10 +224,6 @@ profile = profile_loc
 
 browser = webdriver.Firefox(profile)
 browser.get(web_page)
-	
-# enter password
-user_name = config_pass.BANK_USERNAME
-user_pass = config_pass.BANK_PASSWORD
 
 loginElem = browser.find_element_by_name('user')
 loginElem.send_keys(user_name)
@@ -260,16 +265,16 @@ time.sleep(rand_time(1.0,2.0))
 
 accountButton = browser.find_element_by_css_selector('a[id=\'lnkAccountSummary\']')
 
-pdb.set_trace()
-
 # credit account
 data_type = 'credit'
+print('getting credit...')
 time.sleep(rand_time(1.0,2.0))
 credit_account.click()
 loop_csv(data_type)
 
 # checking account
 data_type = 'checking'
+print('getting checking...')
 time.sleep(rand_time(0.5,2.0))
 accountButton = browser.find_element_by_css_selector('a[id=\'lnkAccountSummary\']')
 accountButton.click()
@@ -280,6 +285,7 @@ loop_csv(data_type)
 
 # savings account
 data_type = 'savings'
+print('getting savings...')
 time.sleep(rand_time(0.5,2.0))
 accountButton = browser.find_element_by_css_selector('a[id=\'lnkAccountSummary\']')
 accountButton.click()
@@ -295,5 +301,6 @@ signOutButton.click()
 time.sleep(rand_time(0.5,2.0))
 
 # close browser
-browser.close()	
+browser.close()
+
 print('done.')

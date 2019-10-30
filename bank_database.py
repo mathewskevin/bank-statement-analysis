@@ -16,11 +16,13 @@ import xlsxwriter
 from openpyxl import Workbook
 
 # specify folder where CSV files are stored
-data_folder = 'bank_files'
+#data_folder = r'D:\My_Storage\Workspace\bank-account-analysis-master\bank_files'
+#data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\bank_files'
+data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\dummy_data'
 
 # specify lookup table for transaction classification
 # please update your own lookup table with transactions/categories
-lookup_file = 'lookup_table.xlsx'
+lookup_file = data_folder + '\\lookup_table.xlsx'
 
 # specify output file name
 output_name = 'database_file (please enable editing).xlsx'
@@ -100,7 +102,7 @@ def add_date(row):
 
 # function to clean checking account data
 def checking_convert(data):
-	debit_string = '-'
+	debit_string = 'POS Debit - Visa Check Card 7355 - '
 
 	try:
 		combine_debit = data[data['Description'].str.contains(debit_string)]['Description'].str.split('- ',2,expand=True)[2]
@@ -135,7 +137,9 @@ def savings_convert(data):
 print('running...')
 file_list = os.listdir(data_folder)
 file_df = pd.DataFrame({'Filenames':file_list})
-lookup_table = pd.read_excel(lookup_file)
+file_df = file_df[file_df['Filenames'].str.contains('.csv')]
+lookup_table = pd.read_excel(lookup_file, sheet_name = 'Lookup')
+purchase_table = pd.read_excel(lookup_file, sheet_name = 'Purchases')
 
 # https://www.geeksforgeeks.org/python-pandas-split-strings-into-two-list-columns-using-str-split/
 new_series = file_df['Filenames'].str.split("_", n=1, expand = True)
@@ -186,13 +190,16 @@ final_dataset = pd.concat([time_df, final_dataset], axis=1)
 final_dataset = final_dataset.merge(lookup_table, on='Description', how='outer')
 final_dataset = final_dataset.sort_values('date_col')
 
+final_dataset = final_dataset.merge(purchase_table, on=['Date','Account Type','Description','Debit'], how='outer')
+#final_dataset = pd.concat([final_dataset, purchase_table], join='outer')
+
 try:
 	final_dataset['Year'] = final_dataset['Year'].astype('int64')
 except:
 	pdb.set_trace()
 final_dataset['Month'] = final_dataset['Month'].astype('int64')
 final_dataset['Quarter'] = final_dataset['Quarter'].astype('int64')
-final_dataset = final_dataset[['Year','Month','Date','Account Type','Category','Description','Debit','Credit']]
+final_dataset = final_dataset[['Year','Month','Date','Account Type','Category','Description','Debit','Credit','Detail']]
 
 # purchase data
 purchase_data = final_dataset[final_dataset['Account Type'].isin(['checking','credit'])]
@@ -215,14 +222,36 @@ pie_data = purchase_data[purchase_data['Year']>=year_cutoff]
 #pie_data = purchase_data
 pie_chart_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
 dashboard_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc='count').reset_index()
+
+# purchase amounts
+dashboard_data_2 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc=np.sum).reset_index() # YYYYMM Data
+dashboard_data_2.columns = dashboard_data_2.columns.droplevel(0) # reset columns
+dashboard_data_2 = dashboard_data_2.rename(columns={'':'Category'})
+dashboard_data_2 = dashboard_data_2.set_index('Category')
+dashboard_data_2 = dashboard_data_2.T.sort_index(ascending=False).T.reset_index()
+
+# purchase counts
+dashboard_data_3 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc='count').reset_index() # YYYYMM Data Counts
+dashboard_data_3.columns = dashboard_data_3.columns.droplevel(0) # reset columns
+dashboard_data_3 = dashboard_data_3.rename(columns={'':'Category'})
+dashboard_data_3 = dashboard_data_3.set_index('Category')
+dashboard_data_3 = dashboard_data_3.T.sort_index(ascending=False).T.reset_index()
+
+# combine purchase dashboard dataframes into one
+#https://datatofish.com/concatenate-values-python/
+dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).astype(str) + ' (' + dashboard_data_3.iloc[:,1:].fillna(0).astype('int64').astype(str) + ')'
+dashboard_data_4 = pd.concat([dashboard_data_3.iloc[:,0], dashboard_data_4], axis=1)
+dashboard_data_4 = dashboard_data_4.replace('nan (0)','')
+
 dashboard_data = pd.merge(dashboard_data, pie_chart_data, how='inner', on='Category')
 dashboard_data.columns = ['Category','# Purchases','$ Amount']
-dashboard_data = dashboard_data.sort_values('$ Amount', ascending=False)
+dashboard_data = pd.merge(dashboard_data, dashboard_data_4, how='inner', on='Category')
+#dashboard_data = dashboard_data.sort_values('$ Amount', ascending=False)
 
 # paste all data
-dashboard_data.to_excel(writer, sheet_name='Dashboard', index=False, startrow=2, startcol=9)
-purchase_data.to_excel(writer, sheet_name = 'Purchase Data', index=False)
-savings_data.to_excel(writer, sheet_name = 'Savings Data', index=False)
+dashboard_data.to_excel(writer, sheet_name='Dashboard', index=False, startrow=3, startcol=9)
+purchase_data.to_excel(writer, sheet_name ='Purchase Data', index=False)
+savings_data.to_excel(writer, sheet_name ='Savings Data', index=False)
 pie_chart_data.to_excel(writer, sheet_name='Chart Data', index=False, startrow=0, startcol=8)
 chart_data.to_excel(writer, sheet_name='Chart Data', index=False)
 
@@ -244,6 +273,17 @@ worksheet.set_column(9, 9, 18)
 worksheet.set_column(10, 10, 10.11)
 worksheet.set_column(11, 11, 10.11)
 
+totals_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
+for col in range(12, totals_data.shape[0] + 12): # sum of savings
+	worksheet.write(2, col, totals_data.iloc[col-12])
+
+counts_data = dashboard_data_3.iloc[:,1:].sum() # sum totals
+for col in range(12, counts_data.shape[0] + 12): # sum of savings
+	worksheet.write(1, col, counts_data.iloc[col-12])
+
+for col in range(12, totals_data.shape[0] + 12): # sum of savings
+	worksheet.set_column(col, col, 10)
+
 # Create a new chart object.
 chart = workbook.add_chart({'type': 'line'})
 paste_string_1 = '=\'Chart Data\'!$G$2:$G$' + str(chart_data.shape[0] + 2) # data
@@ -253,7 +293,14 @@ chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name'
 bar_chart = workbook.add_chart({'type': 'column'})
 paste_string_1 = '=\'Chart Data\'!$D$2:$D$' + str(chart_data.shape[0] + 2) # labels
 paste_string_2 = '=\'Chart Data\'!$A$2:$A$' + str(chart_data.shape[0] + 2) # data
-bar_chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Spending'})
+bar_chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Spent'})
+
+'''
+bar_chart = workbook.add_chart({'type': 'line'})
+paste_string_1 = '=\'Chart Data\'!$B$2:$B$' + str(chart_data.shape[0] + 2) # labels
+paste_string_2 = '=\'Chart Data\'!$A$2:$A$' + str(chart_data.shape[0] + 2) # data
+bar_chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Earned'})
+'''
 
 chart.set_title({'name': 'Bank Account'})
 chart.set_x_axis({'name':'YYYYMM', 'label_position':'low'})
