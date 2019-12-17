@@ -15,9 +15,10 @@ import pdb
 import xlsxwriter
 from tabulate import tabulate
 from openpyxl import Workbook
+import config_pass
 
 # specify folder where CSV files are stored
-data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\dummy_data'
+data_folder = config_pass.data_folder
 
 # specify lookup table for transaction classification
 # please update your own lookup table with transactions/categories

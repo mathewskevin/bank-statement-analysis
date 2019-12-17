@@ -10,10 +10,6 @@ import pdb, time, sys, os
 import random, datetime
 from datetime import date, timedelta
 import pandas as pd
-
-#config_path = "D:\My_Storage\Workspace\bank-account-analysis-master\bank_files"
-config_path = "D:\My_Storage\My_Documents\bank-account-analysis-master\bank_files"
-sys.path.append(config_path) 
 import config_pass
 
 # enter password
@@ -21,16 +17,15 @@ user_name = config_pass.BANK_USERNAME
 user_pass = config_pass.BANK_PASSWORD
 
 # input variables
-site_name = 'https://www.navyfederal.org/' # site name
-profile_loc = r'C:\Users\Kevin\AppData\Roaming\Mozilla\Firefox\Profiles\r5s0g7v9.default' # web browser profile
-credit_name = 'Visa Signature GO REWARDS - 5295' # credit account name
-checking_name = 'EveryDay Checking - 3969' # checking account name
-savings_name = 'Share Savings - 8327' # savings account name
+site_name = config_pass.site_name # site name
+profile_loc = config_pass.profile_loc # web browser profile
 
-download_folder = r'C:\Users\Kevin\Downloads'
-#database_folder = r'D:\My_Storage\Workspace\navyfed-account-analysis-master'
-database_folder = r"D:\My_Storage\My_Documents\bank-account-analysis-master"
-database_file = database_folder + '\\database_file.xlsx' # database_file (please enable editing)
+credit_name = config_pass.credit_name # credit account name
+checking_name = config_pass.checking_name # checking account name
+savings_name = config_pass.savings_name # savings account name
+data_folder = config_pass.data_folder
+
+database_file = data_folder + '\\database_file.xlsx' # database_file (please enable editing)
 src = download_folder + '\\transactions.CSV'
 
 # calculate random time to simulate human input
