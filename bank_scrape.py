@@ -30,7 +30,7 @@ savings_name = 'Share Savings - 8327' # savings account name
 download_folder = r'C:\Users\Kevin\Downloads'
 #database_folder = r'D:\My_Storage\Workspace\navyfed-account-analysis-master'
 database_folder = r"D:\My_Storage\My_Documents\bank-account-analysis-master"
-database_file = database_folder + '\\database_file (please enable editing).xlsx'
+database_file = database_folder + '\\database_file.xlsx' # database_file (please enable editing)
 src = download_folder + '\\transactions.CSV'
 
 # calculate random time to simulate human input

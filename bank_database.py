@@ -1,4 +1,4 @@
-# Kevin Mathews 8/16/2019 rev 1.02
+# Kevin Mathews 12/16/2019 rev 1.03
 # Bank Analysis Script
 # written in Python 3
 
@@ -13,11 +13,10 @@ import numpy as np
 import pandas as pd
 import pdb
 import xlsxwriter
+from tabulate import tabulate
 from openpyxl import Workbook
 
 # specify folder where CSV files are stored
-#data_folder = r'D:\My_Storage\Workspace\bank-account-analysis-master\bank_files'
-#data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\bank_files'
 data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\dummy_data'
 
 # specify lookup table for transaction classification
@@ -25,7 +24,7 @@ data_folder = r'D:\My_Storage\My_Documents\bank-account-analysis-master\dummy_da
 lookup_file = data_folder + '\\lookup_table.xlsx'
 
 # specify output file name
-output_name = 'database_file (please enable editing).xlsx'
+output_name = 'database_file.xlsx'
 
 data_dict = {'credit':'Transaction Date',
 			 'checking':'Date',
@@ -77,6 +76,14 @@ def month_col(row):
 	output_string = '20' + year_num + month_num
 	
 	return output_string
+
+# https://stackoverflow.com/questions/23861680/convert-spreadsheet-number-to-column-letter
+def colnum_string(n):
+    string = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        string = chr(65 + remainder) + string
+    return string
 
 # function to add date column for sorting
 def add_date(row):
@@ -134,6 +141,54 @@ def savings_convert(data):
 
 	return data_out
 
+def dashboard_2_gen(pie_data):
+	# purchase amounts
+	dashboard_data_2 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc=np.sum).reset_index() # YYYYMM Data
+	dashboard_data_2.columns = dashboard_data_2.columns.droplevel(0) # reset columns
+	dashboard_data_2 = dashboard_data_2.rename(columns={'':'Category'})
+	dashboard_data_2 = dashboard_data_2.set_index('Category')
+	dashboard_data_2 = dashboard_data_2.T.sort_index(ascending=False).T.reset_index()
+	return dashboard_data_2
+
+def dashboard_3_gen(pie_data):
+	# purchase counts
+	dashboard_data_3 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc='count').reset_index() # YYYYMM Data Counts
+	dashboard_data_3.columns = dashboard_data_3.columns.droplevel(0) # reset columns
+	dashboard_data_3 = dashboard_data_3.rename(columns={'':'Category'})
+	dashboard_data_3 = dashboard_data_3.set_index('Category')
+	dashboard_data_3 = dashboard_data_3.T.sort_index(ascending=False).T.reset_index()
+	return dashboard_data_3
+
+def dashboard_savings_gen(savings_data):
+	# savings counts
+	dashboard_savings = pd.pivot_table(savings_data[savings_data['Year']>=year_cutoff], values=['Credit'], index='Category', columns='Month', aggfunc=np.sum).reset_index()
+	dashboard_savings.columns = dashboard_savings.columns.droplevel(0) # reset columns
+	dashboard_savings = dashboard_savings.rename(columns={'':'Category'})
+	dashboard_savings = dashboard_savings.set_index('Category')
+	dashboard_savings = dashboard_savings.T.sort_index(ascending=False).T.reset_index()
+	return dashboard_savings
+
+# function to find coordinates for cooments, and generate extra data cleaning.
+def dashboard_3_clean(totals_data, dashboard_data_2, dashboard_data_3):
+	dashboard_data_3 = pd.DataFrame()
+	dashboard_data_3_index = dashboard_data_2.iloc[:,0]
+	current_col = 12
+	for column in dashboard_data_2.iloc[:,1:]:	
+		#current_col += 1
+		#current_col_letter = colnum_string(current_col)
+		col_data = dashboard_data_2[column] # money spent
+		col_div = totals_data[column] # money earned
+		data_div = col_data / col_div # percent data
+		data_div = pd.Series(["{0:.2f}%".format(val * 100) for val in data_div])
+		dashboard_data_3 = pd.concat([dashboard_data_3, data_div], axis=1)
+
+	dashboard_data_3 = pd.concat([dashboard_data_3_index,dashboard_data_3], axis=1)
+	dashboard_data_3.replace('nan%', np.nan, inplace=True)
+	dashboard_data_3.replace('inf%', np.nan, inplace=True)
+	dashboard_data_3.columns = dashboard_data_2.columns
+
+	return dashboard_data_3
+
 print('running...')
 file_list = os.listdir(data_folder)
 file_df = pd.DataFrame({'Filenames':file_list})
@@ -189,7 +244,6 @@ final_dataset = pd.concat([time_df, final_dataset], axis=1)
 
 final_dataset = final_dataset.merge(lookup_table, on='Description', how='outer')
 final_dataset = final_dataset.sort_values('date_col')
-
 final_dataset = final_dataset.merge(purchase_table, on=['Date','Account Type','Description','Debit'], how='outer')
 #final_dataset = pd.concat([final_dataset, purchase_table], join='outer')
 
@@ -206,9 +260,11 @@ purchase_data = final_dataset[final_dataset['Account Type'].isin(['checking','cr
 purchase_data = purchase_data[~purchase_data['Debit'].isnull()]
 purchase_data = purchase_data[purchase_data['Description']!='Transfer to Credit Card']
 purchase_data = purchase_data.drop('Credit', axis=1)
+purchase_data = purchase_data.fillna('-')
 
 # savings data
 savings_data = final_dataset[final_dataset['Account Type']=='savings']
+#savings_data = savings_data.fillna('-')
 
 # chart data
 chart_data = pd.pivot_table(savings_data, values=['Debit','Credit'], index='Month', aggfunc=np.sum).reset_index()
@@ -223,25 +279,24 @@ pie_data = purchase_data[purchase_data['Year']>=year_cutoff]
 pie_chart_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
 dashboard_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc='count').reset_index()
 
-# purchase amounts
-dashboard_data_2 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc=np.sum).reset_index() # YYYYMM Data
-dashboard_data_2.columns = dashboard_data_2.columns.droplevel(0) # reset columns
-dashboard_data_2 = dashboard_data_2.rename(columns={'':'Category'})
-dashboard_data_2 = dashboard_data_2.set_index('Category')
-dashboard_data_2 = dashboard_data_2.T.sort_index(ascending=False).T.reset_index()
+dashboard_data_2 = dashboard_2_gen(pie_data) # purchase amounts
+dashboard_data_3 = dashboard_3_gen(pie_data) # purchase counts
+dashboard_savings = dashboard_savings_gen(savings_data) # savings counts
 
-# purchase counts
-dashboard_data_3 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc='count').reset_index() # YYYYMM Data Counts
-dashboard_data_3.columns = dashboard_data_3.columns.droplevel(0) # reset columns
-dashboard_data_3 = dashboard_data_3.rename(columns={'':'Category'})
-dashboard_data_3 = dashboard_data_3.set_index('Category')
-dashboard_data_3 = dashboard_data_3.T.sort_index(ascending=False).T.reset_index()
+# percent counts - generate percent values for each value in purchase amounts
+totals_data = dashboard_data_2.iloc[:,1:].sum()
+dashboard_data_3 = dashboard_3_clean(totals_data, dashboard_data_2, dashboard_data_3)
 
 # combine purchase dashboard dataframes into one
 #https://datatofish.com/concatenate-values-python/
-dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).astype(str) + ' (' + dashboard_data_3.iloc[:,1:].fillna(0).astype('int64').astype(str) + ')'
+#dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).astype(str) + ' (' + dashboard_data_3.iloc[:,1:].fillna(0).astype('int64').astype(str) + ')'
+
+dashboard_data_4 = dashboard_data_2.iloc[:,1:]
+#dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).applymap('${:,.2f}'.format) + ' (' + dashboard_data_3.iloc[:,1:].astype(str) + ')'
 dashboard_data_4 = pd.concat([dashboard_data_3.iloc[:,0], dashboard_data_4], axis=1)
-dashboard_data_4 = dashboard_data_4.replace('nan (0)','')
+dashboard_data_4 = dashboard_data_4.replace('$nan (nan)','')
+dashboard_data_4 = dashboard_data_4.replace('(nan)','()')
+dashboard_data_4 = dashboard_data_4.replace('$nan','')
 
 dashboard_data = pd.merge(dashboard_data, pie_chart_data, how='inner', on='Category')
 dashboard_data.columns = ['Category','# Purchases','$ Amount']
@@ -273,16 +328,72 @@ worksheet.set_column(9, 9, 18)
 worksheet.set_column(10, 10, 10.11)
 worksheet.set_column(11, 11, 10.11)
 
-totals_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
-for col in range(12, totals_data.shape[0] + 12): # sum of savings
-	worksheet.write(2, col, totals_data.iloc[col-12])
+# coordinates for comments
+dashboard_coord = dashboard_data.set_index('Category').iloc[:,2:].notna()
 
-counts_data = dashboard_data_3.iloc[:,1:].sum() # sum totals
-for col in range(12, counts_data.shape[0] + 12): # sum of savings
-	worksheet.write(1, col, counts_data.iloc[col-12])
+col_num = 13
+row_num = 5
+for col_name, col_data in dashboard_coord.iteritems():
+	current_col_letter = colnum_string(col_num)
+	for row_name, cell_data in col_data.iteritems():
+		current_cell = current_col_letter + str(row_num)
+		
+		if cell_data == True:
+			# Add Comments
+			# https://xlsxwriter.readthedocs.io/working_with_cell_comments.html
+			purchase_info = purchase_data[(purchase_data['Month']==col_name) & (purchase_data['Category']==row_name)]
+
+			purchase_counts = pd.DataFrame(purchase_info['Description'].value_counts()).reset_index()
+			purchase_counts.columns = ['Description','Count']
+
+			purchase_info = purchase_info.pivot_table(index='Description', values='Debit', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
+			#purchase_counts = purchase_info.pivot_table(index='Description', values='Description', aggfunc='count').reset_index().sort_values('Debit', ascending=False)
+			purchase_info = purchase_info.merge(purchase_counts, on='Description')
+			purchase_info.columns = ['Description', 'Debit', 'Count']
+			comment_string = tabulate(purchase_info[['Debit','Count','Description']], tablefmt='plain', showindex=False)
+			worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
+		else:
+			pass
+		
+		row_num += 1
+	row_num = 5
+	col_num += 1
+	
+#totals_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
+#for col in range(12, totals_data.shape[0] + 12): # sum of savings
+#	worksheet.write(2, col, totals_data.iloc[col-12])
+
+cell_format = workbook.add_format() # cell w/ border
+cell_format.set_top(2) 
+
+#purc_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
+purc_data = chart_data[chart_data['Month']>201800].set_index('Month')['Spent'].sort_index(ascending=False)
+for col in range(12, purc_data.shape[0] + 12): # sum of savings
+	worksheet.write(4 + dashboard_data.shape[0], col, purc_data.iloc[col-12], cell_format)
+
+#save_data = dashboard_savings.iloc[:,1:].sum() # sum totals
+earn_data = chart_data[chart_data['Month']>201800].set_index('Month')['Savings'].sort_index(ascending=False)
+for col in range(12, earn_data.shape[0] + 12): # sum of savings
+	worksheet.write(5 + dashboard_data.shape[0], col, earn_data.iloc[col-12])
+
+save_data = earn_data - purc_data
+for col in range(12, save_data.shape[0] + 12): # sum of savings
+	worksheet.write(6 + dashboard_data.shape[0], col, save_data.iloc[col-12])
 
 for col in range(12, totals_data.shape[0] + 12): # sum of savings
 	worksheet.set_column(col, col, 10)
+
+worksheet.write(4 + dashboard_data.shape[0], 11, purc_data.sum(), cell_format)
+worksheet.write(5 + dashboard_data.shape[0], 11, earn_data.sum())
+worksheet.write(6 + dashboard_data.shape[0], 11, save_data.sum())
+
+worksheet.write(4 + dashboard_data.shape[0], 10, purchase_data[purchase_data['Year']>=year_cutoff]['Category'].value_counts().sum(), cell_format)
+worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Year']>=year_cutoff].fillna('-')['Category'].value_counts().sum())
+worksheet.write(6 + dashboard_data.shape[0], 10, '-')
+
+worksheet.write(4 + dashboard_data.shape[0], 9, 'Spent', cell_format)
+worksheet.write(5 + dashboard_data.shape[0], 9, 'Earned')
+worksheet.write(6 + dashboard_data.shape[0], 9, 'Saved')
 
 # Create a new chart object.
 chart = workbook.add_chart({'type': 'line'})
