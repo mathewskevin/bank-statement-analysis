@@ -110,7 +110,7 @@ def add_date(row):
 
 # function to clean checking account data
 def checking_convert(data):
-	debit_string = 'POS Debit - Visa Check Card 7355 - '
+	debit_string = config_pass.debit_string
 
 	try:
 		combine_debit = data[data['Description'].str.contains(debit_string)]['Description'].str.split('- ',2,expand=True)[2]
@@ -271,10 +271,10 @@ savings_data = final_dataset[final_dataset['Account Type']=='savings']
 chart_data = pd.pivot_table(savings_data, values=['Debit','Credit'], index='Month', aggfunc=np.sum).reset_index()
 spending_data = pd.pivot_table(purchase_data, values=['Debit'], index='Month', aggfunc=np.sum).reset_index()
 
-chart_data = pd.merge(chart_data, spending_data, how='inner', on='Month')
+chart_data = pd.merge(chart_data, spending_data, how='outer', on='Month').fillna(0)
 chart_data.columns = ['Month','Savings','Checking','Spent']
 
-year_cutoff = 2018
+year_cutoff = 2010
 pie_data = purchase_data[purchase_data['Year']>=year_cutoff]
 #pie_data = purchase_data
 pie_chart_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
@@ -335,10 +335,32 @@ dashboard_coord = dashboard_data.set_index('Category').iloc[:,2:].notna()
 col_num = 13
 row_num = 5
 for col_name, col_data in dashboard_coord.iteritems():
+
 	current_col_letter = colnum_string(col_num)
+
+	#savings_counts = pd.DataFrame(savings_info['Description'].value_counts()).reset_index()
+	#savings_counts.columns = ['Description','Count']
+	
+	#savings_info = savings_info.pivot_table(index='Description', values='Credit', aggfunc=np.sum).reset_index().sort_values('Credit', ascending=False)
+	#savings_info = savings_info.merge(savings_counts, on='Description')
+	#savings_info.columns = ['Description', 'Credit', 'Count']
+	#comment_string = tabulate(savings_info[['Credit','Count','Description']], tablefmt='plain', showindex=False)	
+
+	# Earnings Comments
+	current_cell = current_col_letter + str(6 + dashboard_coord.shape[0])
+	savings_info = savings_data[(savings_data['Month']==col_name) & (savings_data['Description']!='Transfer to Checking')]
+	comment_string = tabulate(savings_info[['Date','Credit','Description']], tablefmt='plain', showindex=False)
+	worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
+
+	current_cell = current_col_letter + str(7 + dashboard_coord.shape[0])
+	check_info =  savings_data[(savings_data['Month']==col_name) & (savings_data['Description']=='Transfer to Checking')]
+	comment_string = tabulate(check_info[['Date','Debit','Description']], tablefmt='plain', showindex=False)
+	worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
+	
+	# write individual comments
 	for row_name, cell_data in col_data.iteritems():
 		current_cell = current_col_letter + str(row_num)
-		
+
 		if cell_data == True:
 			# Add Comments
 			# https://xlsxwriter.readthedocs.io/working_with_cell_comments.html
@@ -368,33 +390,48 @@ cell_format = workbook.add_format() # cell w/ border
 cell_format.set_top(2) 
 
 #purc_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
-purc_data = chart_data[chart_data['Month']>201800].set_index('Month')['Spent'].sort_index(ascending=False)
+#purc_data = chart_data[chart_data['Month']>201600].set_index('Month')['Spent'].sort_index(ascending=False)
+purc_data = chart_data.set_index('Month')['Spent'].sort_index(ascending=False)
 for col in range(12, purc_data.shape[0] + 12): # sum of savings
 	worksheet.write(4 + dashboard_data.shape[0], col, purc_data.iloc[col-12], cell_format)
 
 #save_data = dashboard_savings.iloc[:,1:].sum() # sum totals
-earn_data = chart_data[chart_data['Month']>201800].set_index('Month')['Savings'].sort_index(ascending=False)
+#earn_data = chart_data[chart_data['Month']>201600].set_index('Month')['Savings'].sort_index(ascending=False)
+
+earn_data = chart_data.set_index('Month')['Savings'].sort_index(ascending=False)
 for col in range(12, earn_data.shape[0] + 12): # sum of savings
 	worksheet.write(5 + dashboard_data.shape[0], col, earn_data.iloc[col-12])
 
-save_data = earn_data - purc_data
+check_data = chart_data.set_index('Month')['Checking'].sort_index(ascending=False)
+for col in range(12, check_data.shape[0] + 12): # sum of savings
+	worksheet.write(6 + dashboard_data.shape[0], col, check_data.iloc[col-12])
+
+save_data = earn_data - check_data
 for col in range(12, save_data.shape[0] + 12): # sum of savings
-	worksheet.write(6 + dashboard_data.shape[0], col, save_data.iloc[col-12])
+	worksheet.write(7 + dashboard_data.shape[0], col, save_data.iloc[col-12])
 
 for col in range(12, totals_data.shape[0] + 12): # sum of savings
 	worksheet.set_column(col, col, 10)
 
 worksheet.write(4 + dashboard_data.shape[0], 11, purc_data.sum(), cell_format)
 worksheet.write(5 + dashboard_data.shape[0], 11, earn_data.sum())
-worksheet.write(6 + dashboard_data.shape[0], 11, save_data.sum())
+worksheet.write(6 + dashboard_data.shape[0], 11, check_data.sum())
+worksheet.write(7 + dashboard_data.shape[0], 11, save_data.sum())
 
 worksheet.write(4 + dashboard_data.shape[0], 10, purchase_data[purchase_data['Year']>=year_cutoff]['Category'].value_counts().sum(), cell_format)
-worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Year']>=year_cutoff].fillna('-')['Category'].value_counts().sum())
-worksheet.write(6 + dashboard_data.shape[0], 10, '-')
+#worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Year']>=year_cutoff].fillna('-')['Category'].value_counts().sum())
+worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Description']!='Transfer to Checking'].shape[0])
+worksheet.write(6 + dashboard_data.shape[0], 10, savings_data[savings_data['Description']=='Transfer to Checking'].shape[0])
+worksheet.write(7 + dashboard_data.shape[0], 10, '-')
 
 worksheet.write(4 + dashboard_data.shape[0], 9, 'Spent', cell_format)
 worksheet.write(5 + dashboard_data.shape[0], 9, 'Earned')
-worksheet.write(6 + dashboard_data.shape[0], 9, 'Saved')
+worksheet.write(6 + dashboard_data.shape[0], 9, 'Checking Transfer')
+worksheet.write(7 + dashboard_data.shape[0], 9, 'Saved')
+
+worksheet.write(8 + dashboard_data.shape[0], 9, 'To Pay')
+worksheet.write(8 + dashboard_data.shape[0], 10, '-')
+worksheet.write(8 + dashboard_data.shape[0], 11, purc_data.sum() - check_data.sum())
 
 # Create a new chart object.
 chart = workbook.add_chart({'type': 'line'})

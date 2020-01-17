@@ -24,9 +24,13 @@ credit_name = config_pass.credit_name # credit account name
 checking_name = config_pass.checking_name # checking account name
 savings_name = config_pass.savings_name # savings account name
 data_folder = config_pass.data_folder
+download_folder = config_pass.download_folder
 
 database_file = data_folder + '\\database_file.xlsx' # database_file (please enable editing)
 src = download_folder + '\\transactions.CSV'
+
+start_date = '8/1/2019' # find latest date in current data
+end_date = datetime.datetime.today().strftime('%m/%d/%Y') # find todays date
 
 # calculate random time to simulate human input
 def rand_time(lower, upper):
@@ -72,8 +76,10 @@ def name_data(data, data_type):
 	return output_name
 
 # load database file and find latest item date
-def date_list():
+def date_list(start_date, end_date):
 	print('determining dates...')
+	
+	'''
 	# find beginning dates
 	purchase_data = pd.read_excel(database_file, sheet_name = 'Purchase Data')
 	savings_data = pd.read_excel(database_file, sheet_name = 'Savings Data')
@@ -89,13 +95,13 @@ def date_list():
 		latest_date = savings_date
 	else:
 		latest_date = purchase_date
-
-	# find todays date
-	end_date = datetime.datetime.today()
-	end_date_string = end_date.strftime('%m/%d/%Y')
+	'''
+	start_date = datetime.datetime.strptime(start_date, '%m/%d/%Y')
+	end_date = datetime.datetime.strptime(end_date, '%m/%d/%Y')
+	#end_date = end_date.strftime('%m/%d/%Y')
 
 	# loop for date intervals
-	start_date = latest_date - timedelta(days=30)
+	start_date = start_date - timedelta(days=30)
 	start_date_string = start_date.strftime('%m/%d/%Y')
 
 	mid_date = start_date + timedelta(days=round(rand_time(50,70)))
@@ -104,7 +110,7 @@ def date_list():
 	date_list.append([start_date.strftime('%m/%d/%Y'),mid_date.strftime('%m/%d/%Y')])
 	while mid_date < end_date:
 		start_date = mid_date
-		mid_date = start_date + timedelta(days=round(rand_time(50,70)))
+		mid_date = start_date + timedelta(days=round(rand_time(50,60)))
 		start_date = start_date - timedelta(days=round(rand_time(20,30)))
 		if mid_date > end_date:
 			date_list.append([start_date.strftime('%m/%d/%Y'),end_date.strftime('%m/%d/%Y')])
@@ -206,7 +212,21 @@ def loop_csv(data_type):
 		time.sleep(0.5)
 
 # determine date_list
-date_list = date_list()
+date_list = date_list(start_date, end_date)
+
+# verify all lengths less than 90 days
+full_date_list = []
+for i in date_list:	
+	date_1 = datetime.datetime.strptime(i[0], '%m/%d/%Y')
+	date_2 = datetime.datetime.strptime(i[1], '%m/%d/%Y')
+	date_delta = (date_2 - date_1).days
+	
+	full_date_list.append(i + [date_delta])
+	
+	if date_delta >= 90:
+		pdb.set_trace()
+
+pdb.set_trace()
 
 # check if there really is a need to update
 if len(date_list) < 2:
