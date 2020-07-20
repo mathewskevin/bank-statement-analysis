@@ -7,4 +7,4 @@ bank_scrape.py - A selenium webscraper which I use to scrape my bank's website f
 
 bank_database.py - This python script generates the excel analysis given the statement data in a folder on my computer.
 
-lookup_table.xlsx - This file contains some extra data used by bank_database.py. I can add custom notes to certain transactions. This way I remember exactly why I spent $400 on 27 copies of Deep Impact on DVD.
+lookup_table.xlsx - This file is used by bank_database.py. It lets me add custom notes to any transaction. This way I remember exactly why I spent $400 on 27 copies of Deep Impact on DVD.
