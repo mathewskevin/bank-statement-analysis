@@ -1,5 +1,5 @@
 # bank-statement-analysis
-I use these python files to aggregate my bank statements (CSV files), and combine them into a single excel file with a spending graph, spending pie, and multiple transaction lists. Makes it easy to budget.
+I use these python files to aggregate my bank statements (CSV files), and combine them into a single excel file with a spending graph, spending pie, and multiple transaction lists. Makes it easy to budget & detect fraud.
 
 file description:
 
