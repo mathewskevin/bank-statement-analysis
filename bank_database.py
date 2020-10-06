@@ -1,4 +1,4 @@
-# Kevin Mathews 12/16/2019 rev 1.03
+# Kevin Mathews 09/14/2020 rev 1.04
 # Bank Analysis Script
 # written in Python 3
 
@@ -8,75 +8,81 @@
 # The file will also include line/pie graphs to analyze your bank statement.
 # The original CSV files will remain unmodified. Keep them for your records.
 
-import os, pdb, datetime
+# X Object Oriented Structure
+# X Inflow & Outflow DFs
+# X Labels
+# Purchase Table
+# Graphs over time
+
+import os, sys, datetime
 import numpy as np
 import pandas as pd
 import pdb
 import xlsxwriter
 from tabulate import tabulate
 from openpyxl import Workbook
-import config_pass
+import config_database
+
+# year cutoff
+year_cutoff = 2010
 
 # specify folder where CSV files are stored
-data_folder = config_pass.data_folder
+data_folder = os.path.join(os.getcwd(), 'bank_files')
 
 # specify lookup table for transaction classification
 # please update your own lookup table with transactions/categories
-lookup_file = data_folder + '\\lookup_table.xlsx'
+#lookup_filename = os.path.join(data_folder, 'database_lookup.xlsx')
+lookup_filename = os.path.join(os.getcwd(), 'database_lookup.xlsx')
 
 # specify output file name
-output_name = 'database_file.xlsx'
-
-data_dict = {'credit':'Transaction Date',
-			 'checking':'Date',
-			 'savings':'Date'}
+output_name = 'database_analysis.xlsx'
 
 # function to convert date to quarter (not used)
 def quarter_col(row):
-		
-	quarter_dict = {'01':'01',
-				  '02':'01',
-				  '03':'01',
-				  '04':'02',
-				  '05':'02',
-				  '06':'02',
-				  '07':'03',
-				  '08':'03',
-				  '09':'03',
-				  '10':'04',
-				  '11':'04',
-				  '12':'04',}
+        
+    quarter_dict = {'01':'01',
+                    '02':'01',
+                    '03':'01',
+                    '04':'02',
+                    '05':'02',
+                    '06':'02',
+                    '07':'03',
+                    '08':'03',
+                    '09':'03',
+                    '10':'04',
+                    '11':'04',
+                    '12':'04'}
 
-	month_num = row['MM']
-	year_num = str(row['Year'])[~1:]
-	quarter_name = quarter_dict[month_num]
-	
-	output_string = '20' + year_num + quarter_name
+    month_num = row['MM']
+    year_num = str(row['Year'])[~1:]
+    quarter_name = quarter_dict[month_num]
+    
+    output_string = '20' + year_num + quarter_name
 
-	return output_string
+    return output_string
 
 # function to generate month column (not used)
 def month_col(row):
-	month_dict = {'01':'Jan',
-				  '02':'Feb',
-				  '03':'Mar',
-				  '04':'Apr',
-				  '05':'May',
-				  '06':'Jun',
-				  '07':'Jul',
-				  '08':'Aug',
-				  '09':'Sep',
-				  '10':'Oct',
-				  '11':'Nov',
-				  '12':'Dec',}
+    month_dict = {'01':'Jan',
+                  '02':'Feb',
+                  '03':'Mar',
+                  '04':'Apr',
+                  '05':'May',
+                  '06':'Jun',
+                  '07':'Jul',
+                  '08':'Aug',
+                  '09':'Sep',
+                  '10':'Oct',
+                  '11':'Nov',
+                  '12':'Dec'}
 
-	month_num = row['MM']
-	year_num = str(row['Year'])[~1:]
-	month_name = month_dict[month_num]
+    month_num = row['MM']
+    year_num = str(row['Year'])[~1:]
+    month_name = month_dict[month_num]
 
-	output_string = '20' + year_num + month_num
-	
-	return output_string
+    output_string = '20' + year_num + month_num
+    
+    return output_string
 
 # https://stackoverflow.com/questions/23861680/convert-spreadsheet-number-to-column-letter
 def colnum_string(n):
@@ -86,406 +92,456 @@ def colnum_string(n):
         string = chr(65 + remainder) + string
     return string
 
-# function to add date column for sorting
-def add_date(row):
-	data_type = row['Account Type']
-	date_val = row[data_dict[data_type]]
-	date_format = datetime.datetime.strptime(date_val, '%m/%d/%Y')
-	date_month = date_format.month
-	if date_month < 10:
-		date_month = '0' + str(date_month)
-	else:
-		date_month = str(date_month)
+def gen_month_list(start_month, end_month):
+    assert start_month < end_month
 
-	date_day = date_format.day
-	if date_day < 10:
-		date_day = '0' + str(date_day)
-	else:
-		date_day = str(date_day)
+    # find current month
+    current_month_str = str(start_month)[~1:]
+    current_year_str = str(start_month)[:4]
 
-	date_year = str(date_format.year)
-	date_out = date_year + '_' + date_month + '_' + date_day
+    month_output_list = [start_month]
+    month_list = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+    current_month = start_month
+    while current_month != end_month:
+        
+        # find next month
+        current_month_idx = month_list.index(current_month_str)
 
-	return date_out
+        if current_month_idx == 11:
+            next_month_idx = 0
+            current_year_str = str(int(current_year_str) + 1)
+        
+        else:
+            next_month_idx = current_month_idx + 1
 
-# function to clean checking account data
-def checking_convert(data):
-	debit_string = config_pass.debit_string
+        current_month_str = month_list[next_month_idx]
+        current_month = int(current_year_str + current_month_str)
 
-	try:
-		combine_debit = data[data['Description'].str.contains(debit_string)]['Description'].str.split('- ',2,expand=True)[2]
-	except:
-		combine_debit = pd.DataFrame()
-		
-	combine_normal = data[~data['Description'].str.contains(debit_string)]['Description']
-	new_desc = pd.concat([combine_debit, combine_normal]).sort_index()
+        # add next month to list
+        month_output_list.append(current_month)
 
-	data_out = data.drop('Description', axis = 1)
-	data_out.insert(loc=2, column='Description', value=new_desc)
+    #print(month_output_list)
+    return month_output_list
 
-	data_out = data_out.drop('No.', axis = 1)
+class account_template():
+    # function to add date column for sorting
+    def add_time_cols(self):
+        def add_date(row):
+            # date conversion dictionary
+            data_dict = {'Credit Account':'Transaction Date',
+                         'Checking Account':'Date',
+                         'Savings Account':'Date'}
 
-	assert data_out.shape[0] == data.shape[0]
-	
-	return data_out
+            date_val = row[data_dict[self.account_type]]
+            date_format = datetime.datetime.strptime(date_val, '%m/%d/%Y')
+            date_month = date_format.month
+            if date_month < 10:
+                date_month = '0' + str(date_month)
+            else:
+                date_month = str(date_month)
 
-# function to clean credit account data
-def credit_convert(data):
-	data_out = data.drop('Posted Date', axis = 1) # drop posted date
-	data_out.rename(columns={'Transaction Date':'Date'}, inplace=True)# rename transaction date column
+            date_day = date_format.day
+            if date_day < 10:
+                date_day = '0' + str(date_day)
+            else:
+                date_day = str(date_day)
 
-	return data_out
+            date_year = str(date_format.year)
+            date_out = date_year + '_' + date_month + '_' + date_day
 
-# function to clean savings account data
-def savings_convert(data):
-	data_out = data.drop('No.', axis = 1)
+            return date_out
 
-	return data_out
+        mid_dataset = self.df.copy()
 
-def dashboard_2_gen(pie_data):
-	# purchase amounts
-	dashboard_data_2 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc=np.sum).reset_index() # YYYYMM Data
-	dashboard_data_2.columns = dashboard_data_2.columns.droplevel(0) # reset columns
-	dashboard_data_2 = dashboard_data_2.rename(columns={'':'Category'})
-	dashboard_data_2 = dashboard_data_2.set_index('Category')
-	dashboard_data_2 = dashboard_data_2.T.sort_index(ascending=False).T.reset_index()
-	return dashboard_data_2
+        date_col = mid_dataset.apply(add_date, axis=1)
+        mid_dataset.insert(0, 'date_col', date_col)
+        mid_dataset = mid_dataset.sort_values('date_col', ascending=False)
 
-def dashboard_3_gen(pie_data):
-	# purchase counts
-	dashboard_data_3 = pd.pivot_table(pie_data, values=['Debit'], index='Category', columns='Month', aggfunc='count').reset_index() # YYYYMM Data Counts
-	dashboard_data_3.columns = dashboard_data_3.columns.droplevel(0) # reset columns
-	dashboard_data_3 = dashboard_data_3.rename(columns={'':'Category'})
-	dashboard_data_3 = dashboard_data_3.set_index('Category')
-	dashboard_data_3 = dashboard_data_3.T.sort_index(ascending=False).T.reset_index()
-	return dashboard_data_3
+        # remove duplicates & fix index
+        mid_dataset = mid_dataset.drop_duplicates()
+        mid_dataset = mid_dataset.reset_index(drop=True)
 
-def dashboard_savings_gen(savings_data):
-	# savings counts
-	dashboard_savings = pd.pivot_table(savings_data[savings_data['Year']>=year_cutoff], values=['Credit'], index='Category', columns='Month', aggfunc=np.sum).reset_index()
-	dashboard_savings.columns = dashboard_savings.columns.droplevel(0) # reset columns
-	dashboard_savings = dashboard_savings.rename(columns={'':'Category'})
-	dashboard_savings = dashboard_savings.set_index('Category')
-	dashboard_savings = dashboard_savings.T.sort_index(ascending=False).T.reset_index()
-	return dashboard_savings
+        # time dataframe
+        time_df = mid_dataset['date_col'].str.split('_', expand=True).drop(2, axis=1)
+        
+        time_df.columns = ['Year', 'MM']
+        time_df['Month'] = time_df.apply(month_col, axis=1)
+        #time_df['Quarter'] = time_df.apply(quarter_col, axis=1)
 
-# function to find coordinates for cooments, and generate extra data cleaning.
-def dashboard_3_clean(totals_data, dashboard_data_2, dashboard_data_3):
-	dashboard_data_3 = pd.DataFrame()
-	dashboard_data_3_index = dashboard_data_2.iloc[:,0]
-	current_col = 12
-	for column in dashboard_data_2.iloc[:,1:]:	
-		#current_col += 1
-		#current_col_letter = colnum_string(current_col)
-		col_data = dashboard_data_2[column] # money spent
-		col_div = totals_data[column] # money earned
-		data_div = col_data / col_div # percent data
-		data_div = pd.Series(["{0:.2f}%".format(val * 100) for val in data_div])
-		dashboard_data_3 = pd.concat([dashboard_data_3, data_div], axis=1)
+        # main dataset (holds earnings, spending, etc.)
+        mid_dataset = pd.concat([time_df, mid_dataset], axis=1)
+                
+        mid_dataset['Year'] = mid_dataset['Year'].astype('int64')
+        mid_dataset['Month'] = mid_dataset['Month'].astype('int64')
+        #mid_dataset['Quarter'] = mid_dataset['Quarter'].astype('int64')
 
-	dashboard_data_3 = pd.concat([dashboard_data_3_index,dashboard_data_3], axis=1)
-	dashboard_data_3.replace('nan%', np.nan, inplace=True)
-	dashboard_data_3.replace('inf%', np.nan, inplace=True)
-	dashboard_data_3.columns = dashboard_data_2.columns
+        self.df = mid_dataset.copy()
 
-	return dashboard_data_3
+    # find inflow & outflow
+    def calc_flow(self):
+        data = self.df.copy()
+
+        data.rename(columns={'Credit':'Inflow', 'Debit':'Outflow'}, inplace=True)
+        #data.drop('date_col', axis=1, inplace = True)
+        #data.drop('Year', axis=1, inplace = True)
+        data.drop('MM', axis=1, inplace = True)
+
+        self.df = data.copy()
+
+        df_inflow = self.df[~self.df['Inflow'].isna()].copy()
+        df_inflow.drop('Outflow', axis=1, inplace = True)
+        df_outflow = self.df[~self.df['Outflow'].isna()].copy()
+        df_outflow.drop('Inflow', axis=1, inplace = True)
+
+        self.df_inflow = df_inflow.copy()
+        self.df_outflow = df_outflow.copy()
+        self.inflow = round(self.df_inflow['Inflow'].sum(), 2)
+        self.outflow = round(self.df_outflow['Outflow'].sum(), 2)
+        self.balance = round(self.inflow - self.outflow, 2)
+
+    # add account name to inflow/outflow df
+    def add_account_name(self):
+
+        account_series = pd.Series([self.account_name] * self.df_inflow.shape[0])
+        self.df_inflow.reset_index(inplace=True, drop=True)
+        self.df_inflow.insert(0, 'Account', account_series)
+
+        account_series = pd.Series([self.account_name] * self.df_outflow.shape[0])
+        self.df_outflow.reset_index(inplace=True, drop=True)
+        self.df_outflow.insert(0, 'Account', account_series)
+
+class account_savings(account_template):
+
+    # function to clean credit account data
+    def df_update(self):
+        data = self.df.copy()
+        data_out = data.drop('No.', axis = 1)
+        self.df = data_out.copy()
+
+    def __init__(self, df, account_name):
+        self.df = df; self.account_name = account_name
+        self.account_type = 'Savings Account'
+        self.add_time_cols()
+        self.df_update()
+        self.calc_flow()
+        self.add_account_name()
+
+class account_credit(account_template):
+
+    # function to clean credit account data
+    def df_update(self):
+        data = self.df.copy()
+        data_out = data.drop('Posted Date', axis = 1) # drop posted date
+        data_out.rename(columns={'Transaction Date':'Date'}, inplace=True) # rename transaction date column
+        self.df = data_out.copy()
+
+    def __init__(self, df, account_name):
+        self.df = df; self.account_name = account_name
+        self.account_type = 'Credit Account'
+        self.add_time_cols()
+        self.df_update()
+        self.calc_flow()
+        self.add_account_name()
+        
+class account_checking(account_template):
+
+    # function to clean checking account data
+    def df_update(self):
+        data = self.df.copy()
+        data_cols = data.columns.values
+        debit_string = config_database.debit_string
+
+        combine_debit = data[data['Description'].str.contains(debit_string)]['Description'].str.split('- ',2,expand=True)[2]
+
+        #try:
+        #    combine_debit = data[data['Description'].str.contains(debit_string)]['Description'].str.split('- ',2,expand=True)[2]
+        #except:
+        #    combine_debit = pd.DataFrame()
+            
+        combine_normal = data[~data['Description'].str.contains(debit_string)]['Description']
+        new_desc = pd.concat([combine_debit, combine_normal]).sort_index()
+
+        data_out = data.drop('Description', axis = 1)
+        data_out.insert(loc=2, column='Description', value=new_desc)
+
+        data_out = data_out[data_cols].drop('No.', axis = 1)
+
+        assert data_out.shape[0] == data.shape[0]
+        
+        self.df = data_out.copy()
+
+    def __init__(self, df, account_name):
+        self.df = df; self.account_name = account_name
+        self.account_type = 'Checking Account'
+        self.add_time_cols()
+        self.df_update()
+        self.calc_flow()
+        self.add_account_name()
+
+def gen_transactions(credit_outflow, checking_outflow, savings_inflow):
+    # DELIVERABLE Transactions List
+    transactions = pd.concat([credit_outflow, checking_outflow, savings_inflow])
+    categories_table = pd.read_excel(lookup_filename, sheet_name = 'Lookup') # get list of unique purchases
+    unique_transactions = pd.read_excel(lookup_filename, sheet_name = 'Unique Transactions') # get list of unique purchases
+    unique_transactions.rename(columns={'Category':'Category Override'}, inplace=True)
+    transactions = transactions.merge(unique_transactions, on=['Account','Date','Description','Outflow','Inflow'], how='outer')
+    transactions = transactions.merge(categories_table, on=['Description'], how='left')
+    transactions.loc[~transactions['Category Override'].isna(),'Category'] = transactions['Category Override']
+    transactions.sort_values('date_col', ascending=False, inplace=True)
+    transactions.drop_duplicates(inplace=True)
+    transactions['Category'] = transactions['Category'].fillna('Abnormal - New') # classify blanks as new
+    transactions = transactions[['Account','Date','Description','Category','Inflow','Outflow','Memo','Month']]
+    return transactions
+
+def gen_transactions_time_series(transactions):
+   # Create Time Series Data
+    cur_date = datetime.datetime.now()
+    cur_month = int(str(cur_date.year) + str(cur_date.month).zfill(2))
+    month_list = gen_month_list(201601, cur_month)
+    month_index = pd.DataFrame(month_list, columns = ['Month'])
+
+    # Inflow
+    pivot_inflow = pd.pivot_table(transactions[(~transactions['Inflow'].isna())], values=['Inflow'], index='Month', aggfunc=np.sum).reset_index()
+    pivot_outflow = pd.pivot_table(transactions[(~transactions['Outflow'].isna())], values=['Outflow'], index='Month', aggfunc=np.sum).reset_index()
+
+    # Four Walls Spending
+    pivot_4walls = pd.pivot_table(transactions[(~transactions['Outflow'].isna()) & (transactions['Category'].str.contains('Four Walls'))], values=['Outflow'], index='Month', aggfunc=np.sum).reset_index()
+    pivot_4walls.columns = ['Month','Four Walls']
+
+    # Investing
+    pivot_investing = pd.pivot_table(transactions[(~transactions['Outflow'].isna()) & (transactions['Category'].str.contains('Investing'))], values=['Outflow'], index='Month', aggfunc=np.sum).reset_index()
+    pivot_investing.columns = ['Month', 'Investing']
+
+    # Abnormal / Unknown / One-Time Purchases
+    pivot_abnormal = pd.pivot_table(transactions[(~transactions['Outflow'].isna()) & (transactions['Category'].str.contains('Abnormal'))], values=['Outflow'], index='Month', aggfunc=np.sum).reset_index()
+    pivot_abnormal.columns = ['Month', 'Abnormal']
+
+    # Discretionary
+    pivot_discretionary = pd.pivot_table(transactions[(~transactions['Outflow'].isna()) & (transactions['Category'].str.contains('Discretionary'))], values=['Outflow'], index='Month', aggfunc=np.sum).reset_index()
+    pivot_discretionary.columns = ['Month', 'Discretionary']
+
+    # DLEIVERABLE Transaction Time Series
+    transactions_time_series = month_index.merge(pivot_inflow, on=['Month'], how='left')
+    transactions_time_series = transactions_time_series.merge(pivot_outflow, on = ['Month'], how='left')
+    transactions_time_series = transactions_time_series.merge(pivot_4walls, on = ['Month'], how='left')
+    transactions_time_series = transactions_time_series.merge(pivot_discretionary, on = ['Month'], how='left')
+    transactions_time_series = transactions_time_series.merge(pivot_abnormal, on = ['Month'], how='left')
+    transactions_time_series = transactions_time_series.merge(pivot_investing, on = ['Month'], how='left')
+    transactions_time_series.fillna(0, inplace=True)
+    transactions_time_series['Saved (Raw)'] = transactions_time_series['Inflow'] - transactions_time_series['Outflow'] # Find Savings & Wealth
+    transactions_time_series['Saved (Wealth)'] = transactions_time_series['Saved (Raw)'] + transactions_time_series['Investing']
+    transactions_time_series['Saved (Raw)'] = transactions_time_series['Saved (Raw)'].cumsum()
+    transactions_time_series['Saved (Wealth)'] = transactions_time_series['Saved (Wealth)'].cumsum()
+    transactions_time_series['Spent (Wealth)'] = (transactions_time_series['Outflow'] - transactions_time_series['Investing']).cumsum()
+    transactions_time_series['Spent (Month)'] = transactions_time_series['Four Walls'] + transactions_time_series['Discretionary'] + transactions_time_series['Abnormal']
+    transactions_time_series['Saved (Month)'] = (transactions_time_series['Inflow'] - transactions_time_series['Spent (Month)'])
+    transactions_time_series['Spent (6 Mo Rolling)'] = transactions_time_series['Spent (Month)'].rolling(6).mean()
+    transactions_time_series.sort_values('Month', ascending=False, inplace=True)
+    transactions_time_series.loc[transactions_time_series['Month']==cur_month, 'Spent (6 Mo Rolling)'] = 'N/A'
+
+    return transactions_time_series
+
+def gen_transactions_distributions(transactions):
+    # DELIVERABLE Transaction Distribution
+
+    inflow_pivot = pd.pivot_table(transactions[(~transactions['Inflow'].isna())], values=['Inflow'], index='Month', aggfunc=np.sum) # YYYYMM Data
+    inflow_pivot = inflow_pivot.sort_index(ascending=False).T
+    inflow_pivot = pd.DataFrame(inflow_pivot.values, columns=[i for i in inflow_pivot.columns])
+    inflow_pivot.index = ['Inflow']
+
+    transactions_pivot = pd.pivot_table(transactions[(~transactions['Outflow'].isna())], values=['Outflow'], index='Category', columns='Month', aggfunc=np.sum).reset_index() # YYYYMM Data
+    transactions_distribution = pd.DataFrame()
+    for idx, row in transactions_pivot.iterrows():
+        row = row.reset_index(level=0, drop=True)
+        index = row.index[1:].values
+        values = row.values[1:]
+        title = row.values[0]
+        df = pd.DataFrame(values, index=index, columns=[title])
+        transactions_distribution = pd.concat([transactions_distribution, df], axis=1)
+
+    # sort months & transpose
+    transactions_distribution = transactions_distribution.sort_index(ascending=False).T 
+
+    # Find public & private transactions
+    public_categories = pd.read_excel(lookup_filename, sheet_name = 'Public Categories') # get list of public category types
+    public_categories = public_categories.loc[:,'Category'].to_list()
+    tdist_public = transactions_distribution.loc[public_categories].copy()
+    tdist_private = transactions_distribution.loc[~transactions_distribution.index.isin(public_categories)].copy()
+    tdist_private = tdist_private.loc[~tdist_private.index.str.contains('Investing')]
+
+    tdist_discretionary = pd.DataFrame([i for i in tdist_private.sum().values], index = [i for i in tdist_private.sum().index], columns = ['Discretionary | Other']).T
+    tdist_public = pd.concat([tdist_public, tdist_discretionary, inflow_pivot])
+    tdist_public.sort_index(inplace = True)
+
+    #transactions_distribution_public = pd.concat([transactions_distribution_public, inflow_pivot])
+    #transactions_distribution_private = pd.concat([transactions_distribution_private, inflow_pivot])
+    #transactions_distribution.reset_index(inplace=True)
+    #inflow_pivot.reset_index(inplace=True)
+
+    return transactions_distribution, tdist_public
+
+def add_distribution_comments(worksheet, dist_df, transactions):
+    # https://stackoverflow.com/questions/23861680/convert-spreadsheet-number-to-column-letter
+    def colnum_string(n):
+        string = ""
+        while n > 0:
+            n, remainder = divmod(n - 1, 26)
+            string = chr(65 + remainder) + string
+        return string
+
+    def short_string(string):
+        len_string = 18
+        if len(string) > len_string:
+            return string[0:len_string] + '...'
+        else:
+            return string
+
+    def gen_comment_table(col_name, row_name, transactions):
+        comment_table_values = transactions.loc[(transactions['Category']==row_name) & (transactions['Month']==col_name)]
+        col_type = 'Outflow'
+
+        if row_name == 'Discretionary | Other':
+            comment_table_values = transactions.loc[(transactions['Category'].str.contains('Discretionary')) & (transactions['Month']==col_name)]
+            comment_table_values = comment_table_values[comment_table_values['Category']!='Discretionary | Eating Out']
+
+        if row_name == 'Inflow':
+            comment_table_values = transactions.loc[(transactions['Category'].str.contains('Inflow')) & (transactions['Month']==col_name)]
+            col_type = 'Inflow'
+
+        comment_table_counts = pd.DataFrame(comment_table_values['Description'].value_counts()).reset_index()
+        comment_table_counts.columns = ['Description','Count']
+
+        try:
+            comment_table = comment_table_values.pivot_table(index='Description', values=col_type, aggfunc=np.sum).reset_index().sort_values(col_type, ascending=False)
+        except:
+            pdb.set_trace()
+        comment_table = comment_table.merge(comment_table_counts, on='Description')
+        comment_table['Description'] = comment_table['Description'].apply(short_string)
+
+        percent_col = (comment_table[col_type]/comment_table[col_type].sum()).round(2)
+        percent_col = percent_col * 100
+        percent_col = pd.DataFrame(percent_col)
+        percent_col.columns = ['Percent']
+        comment_table.reset_index(drop=True); percent_col.reset_index(drop=True)
+        comment_table = pd.concat([comment_table, percent_col], axis=1)
+
+        avg_col = (comment_table[col_type]/comment_table['Count']).round(2)
+        avg_col = pd.DataFrame(avg_col)
+        avg_col.columns = ['Average']
+        comment_table = pd.concat([comment_table, avg_col], axis=1)
+
+        comment_table = comment_table[['Description',col_type,'Count','Average','Percent']]
+        return comment_table
+
+    # initial cleaning for processing
+    dist_df.fillna('None', inplace=True)
+    dist_df.replace(0, 'None', inplace=True)
+
+    #dist_df.set_index('index', inplace=True)
+
+    # get lists of cols & rows for pulling dataframe cell coordinates
+    col_list = [i for i in dist_df.columns.values]
+    row_list = [i for i in dist_df.index]
+
+    # cycle thorugh all cells of dataframe & input comments where values exist
+    print('adding comments...')
+    for col_name, col_data in dist_df.iteritems():
+        for row_name, cell_data in col_data.iteritems():
+            row_num = row_list.index(row_name); col_num = col_list.index(col_name)
+            cell_value = dist_df.loc[row_name, col_name]
+            current_col_letter = colnum_string(col_num + 2)
+            cell_name = current_col_letter + str(row_num + 2)
+           
+            # where cells are not empty, add comment
+            if cell_value != 'None':
+                sys.stdout.write(str(col_name) + ' ' + cell_name + '\r')
+                sys.stdout.flush()
+                comment_table = gen_comment_table(col_name, row_name, transactions)
+
+                # % of total
+                #assert round(cell_value, 2) == round(comment_table['Outflow'].sum(), 2) 
+                #assert round(cell_value, 2) == round(comment_table['Inflow'].sum(), 2)
+
+                # % of category
+                
+                comment_string = tabulate(comment_table, tablefmt='simple', headers='keys', showindex=False)
+                comment_string = row_name + ' ' + str(col_name) + '\n' + comment_string
+                worksheet.write_comment(cell_name, comment_string, {'x_scale': 3, 'y_scale': 3, 'font_name':'monospace', 'font_size': 8}) #  'font_size': 10 SimSun
+
+    return worksheet
 
 print('running...')
 file_list = os.listdir(data_folder)
-file_df = pd.DataFrame({'Filenames':file_list})
-file_df = file_df[file_df['Filenames'].str.contains('.csv')]
-lookup_table = pd.read_excel(lookup_file, sheet_name = 'Lookup')
-purchase_table = pd.read_excel(lookup_file, sheet_name = 'Purchases')
+file_df = pd.DataFrame({'Filenames':file_list}) # convert to dataframe
+file_df = file_df[file_df['Filenames'].str.contains('.csv')] # filter to csvs
 
 # https://www.geeksforgeeks.org/python-pandas-split-strings-into-two-list-columns-using-str-split/
-new_series = file_df['Filenames'].str.split("_", n=1, expand = True)
-file_df['Type'] = new_series[0]
+new_series = file_df['Filenames'].str.split("_", n=1, expand = True) # split names by "_"
+file_df['Type'] = new_series[0] # add checking/saving/credit label
+
+# get account types
+data_list = file_df['Type'].drop_duplicates().to_list()
+
+# cycle thorugh csvs and merge into main datasest
+account_dict = {}
+for account_type in data_list:
+    file_df_sort = file_df[file_df['Type']==account_type]
+    mid_dataset = pd.DataFrame()
+    for index, row in file_df_sort.iterrows():
+        file_name = row['Filenames']
+        data_read = pd.read_csv(os.path.join(data_folder, file_name))
+        mid_dataset = pd.concat([mid_dataset, data_read])
+
+    # edit checking dataset
+    if account_type == 'checking':
+        account_mid = account_checking(mid_dataset, config_database.checking_name)
+
+    # edit credit dataset
+    if account_type == 'credit':
+        account_mid = account_credit(mid_dataset, config_database.credit_name)
+
+    # edit savings dataset
+    if account_type == 'savings':
+        account_mid = account_savings(mid_dataset, config_database.savings_name)
+
+    account_dict[account_mid.account_name] = account_mid
+    print(account_mid.balance, '|', account_mid.account_name)
+
+# list used for debug
+account_keys = [i for i in account_dict]
+
+# generate transactions
+savings_inflow = account_dict.get(config_database.savings_name).df_inflow
+df_inflow = savings_inflow.copy()
+credit_outflow = account_dict.get(config_database.credit_name).df_outflow
+checking_outflow = account_dict.get(config_database.checking_name).df_outflow
+checking_outflow = checking_outflow.loc[checking_outflow['Description']!='Transfer to Credit Card',:]
+
+# Deliverables
+transactions = gen_transactions(credit_outflow, checking_outflow, savings_inflow)
+transactions_time_series = gen_transactions_time_series(transactions)
+transactions_distribution, tdist_public = gen_transactions_distributions(transactions)
 
 # Create a Pandas Excel writer using XlsxWriter as the engine.
 writer = pd.ExcelWriter(output_name, engine='xlsxwriter')
 
-final_dataset = pd.DataFrame()
-for key, value in data_dict.items():
-	file_df_sort = file_df[file_df['Type']==key]
-	main_dataset = pd.DataFrame()
-	for index, row in file_df_sort.iterrows():
-		file_name = row['Filenames']
-		data_read = pd.read_csv(data_folder + '\\' + file_name)
-		main_dataset = pd.concat([main_dataset, data_read])
+tdist_public.reset_index(inplace=True)
+tdist_public.to_excel(writer, sheet_name ='Distribution', index=False)
+tdist_public.set_index('index', inplace=True)
 
-	main_dataset['Account Type'] = key
-	date_col = main_dataset.apply(add_date, axis=1)
-	main_dataset.insert(0, 'date_col', date_col)
-	main_dataset = main_dataset.sort_values('date_col')
-	main_dataset = main_dataset.drop_duplicates()
-	
-	main_dataset = main_dataset.reset_index(drop=True)
-	
-	# edit checking dataset
-	if key == 'checking':
-		main_dataset = checking_convert(main_dataset)
-	
-	# edit credit dataset
-	if key == 'credit':
-		main_dataset = credit_convert(main_dataset)
-	
-	# edit savings dataset
-	if key == 'savings':
-		main_dataset = savings_convert(main_dataset)
-	
-	final_dataset = pd.concat([final_dataset, main_dataset], sort=True)
-	main_dataset = main_dataset.drop(['date_col', 'Account Type'],axis=1)
+transactions_time_series.to_excel(writer, sheet_name ='Time Series', index=False)
+transactions['Category'] = transactions['Category'].replace('Abnormal - New','')
+transactions.to_excel(writer, sheet_name ='Transactions', index=False)
 
-time_df = final_dataset['date_col'].str.split('_', expand=True).drop(2, axis=1)
-time_df.columns = ['Year', 'MM']
-time_df['Month'] = time_df.apply(month_col, axis=1)
-time_df['Quarter'] = time_df.apply(quarter_col, axis=1)
+worksheet = writer.sheets['Transactions']
+worksheet.set_column(1, 1, 10)
+worksheet.set_column(2, 2, 50)
+worksheet.set_column(3, 3, 25)
 
-final_dataset = pd.concat([time_df, final_dataset], axis=1)
+# add comments to distribution
+worksheet = writer.sheets['Distribution']
+worksheet.set_column(0, 0, 25)
+worksheet = add_distribution_comments(worksheet, tdist_public, transactions)
 
-final_dataset = final_dataset.merge(lookup_table, on='Description', how='outer')
-final_dataset = final_dataset.sort_values('date_col')
-final_dataset = final_dataset.merge(purchase_table, on=['Date','Account Type','Description','Debit'], how='outer')
-#final_dataset = pd.concat([final_dataset, purchase_table], join='outer')
-
-try:
-	final_dataset['Year'] = final_dataset['Year'].astype('int64')
-except:
-	pdb.set_trace()
-final_dataset['Month'] = final_dataset['Month'].astype('int64')
-final_dataset['Quarter'] = final_dataset['Quarter'].astype('int64')
-final_dataset = final_dataset[['Year','Month','Date','Account Type','Category','Description','Debit','Credit','Detail']]
-
-# purchase data
-purchase_data = final_dataset[final_dataset['Account Type'].isin(['checking','credit'])]
-purchase_data = purchase_data[~purchase_data['Debit'].isnull()]
-purchase_data = purchase_data[purchase_data['Description']!='Transfer to Credit Card']
-purchase_data = purchase_data.drop('Credit', axis=1)
-purchase_data = purchase_data.fillna('-')
-
-# savings data
-savings_data = final_dataset[final_dataset['Account Type']=='savings']
-#savings_data = savings_data.fillna('-')
-
-# chart data
-chart_data = pd.pivot_table(savings_data, values=['Debit','Credit'], index='Month', aggfunc=np.sum).reset_index()
-spending_data = pd.pivot_table(purchase_data, values=['Debit'], index='Month', aggfunc=np.sum).reset_index()
-
-chart_data = pd.merge(chart_data, spending_data, how='outer', on='Month').fillna(0)
-chart_data.columns = ['Month','Savings','Checking','Spent']
-
-year_cutoff = 2010
-pie_data = purchase_data[purchase_data['Year']>=year_cutoff]
-#pie_data = purchase_data
-pie_chart_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
-dashboard_data = pd.pivot_table(pie_data, values=['Debit'], index='Category', aggfunc='count').reset_index()
-
-dashboard_data_2 = dashboard_2_gen(pie_data) # purchase amounts
-dashboard_data_3 = dashboard_3_gen(pie_data) # purchase counts
-dashboard_savings = dashboard_savings_gen(savings_data) # savings counts
-
-# percent counts - generate percent values for each value in purchase amounts
-totals_data = dashboard_data_2.iloc[:,1:].sum()
-dashboard_data_3 = dashboard_3_clean(totals_data, dashboard_data_2, dashboard_data_3)
-
-# combine purchase dashboard dataframes into one
-#https://datatofish.com/concatenate-values-python/
-#dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).astype(str) + ' (' + dashboard_data_3.iloc[:,1:].fillna(0).astype('int64').astype(str) + ')'
-
-dashboard_data_4 = dashboard_data_2.iloc[:,1:]
-#dashboard_data_4 = round(dashboard_data_2.iloc[:,1:],2).applymap('${:,.2f}'.format) + ' (' + dashboard_data_3.iloc[:,1:].astype(str) + ')'
-dashboard_data_4 = pd.concat([dashboard_data_3.iloc[:,0], dashboard_data_4], axis=1)
-dashboard_data_4 = dashboard_data_4.replace('$nan (nan)','')
-dashboard_data_4 = dashboard_data_4.replace('(nan)','()')
-dashboard_data_4 = dashboard_data_4.replace('$nan','')
-
-dashboard_data = pd.merge(dashboard_data, pie_chart_data, how='inner', on='Category')
-dashboard_data.columns = ['Category','# Purchases','$ Amount']
-dashboard_data = pd.merge(dashboard_data, dashboard_data_4, how='inner', on='Category')
-#dashboard_data = dashboard_data.sort_values('$ Amount', ascending=False)
-
-# paste all data
-dashboard_data.to_excel(writer, sheet_name='Dashboard', index=False, startrow=3, startcol=9)
-purchase_data.to_excel(writer, sheet_name ='Purchase Data', index=False)
-savings_data.to_excel(writer, sheet_name ='Savings Data', index=False)
-pie_chart_data.to_excel(writer, sheet_name='Chart Data', index=False, startrow=0, startcol=8)
-chart_data.to_excel(writer, sheet_name='Chart Data', index=False)
-
-worksheet = writer.sheets['Chart Data']
-for row in range(2, chart_data.shape[0] + 2): # sum of savings
-	formula_string = '=SUM(' + '$B$2:$B' + str(row) + ')'
-	worksheet.write_formula('E' + str(row), formula_string)
-
-	formula_string = '=SUM(' + '$C$2:$C' + str(row) + ')' # sum of spending
-	worksheet.write_formula('F' + str(row), formula_string)
-
-	formula_string = '=E' + str(row) + '-F' + str(row)# account balance
-	worksheet.write_formula('G' + str(row), formula_string)
-
-workbook  = writer.book
-worksheet = writer.sheets['Dashboard']
-worksheet.write(1,9, 'Purchase Breakdown ' + str(year_cutoff) + ' - Now')
-worksheet.set_column(9, 9, 18)
-worksheet.set_column(10, 10, 10.11)
-worksheet.set_column(11, 11, 10.11)
-
-# coordinates for comments
-dashboard_coord = dashboard_data.set_index('Category').iloc[:,2:].notna()
-
-col_num = 13
-row_num = 5
-for col_name, col_data in dashboard_coord.iteritems():
-
-	current_col_letter = colnum_string(col_num)
-
-	#savings_counts = pd.DataFrame(savings_info['Description'].value_counts()).reset_index()
-	#savings_counts.columns = ['Description','Count']
-	
-	#savings_info = savings_info.pivot_table(index='Description', values='Credit', aggfunc=np.sum).reset_index().sort_values('Credit', ascending=False)
-	#savings_info = savings_info.merge(savings_counts, on='Description')
-	#savings_info.columns = ['Description', 'Credit', 'Count']
-	#comment_string = tabulate(savings_info[['Credit','Count','Description']], tablefmt='plain', showindex=False)	
-
-	# Earnings Comments
-	current_cell = current_col_letter + str(6 + dashboard_coord.shape[0])
-	savings_info = savings_data[(savings_data['Month']==col_name) & (savings_data['Description']!='Transfer to Checking')]
-	comment_string = tabulate(savings_info[['Date','Credit','Description']], tablefmt='plain', showindex=False)
-	worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
-
-	current_cell = current_col_letter + str(7 + dashboard_coord.shape[0])
-	check_info =  savings_data[(savings_data['Month']==col_name) & (savings_data['Description']=='Transfer to Checking')]
-	comment_string = tabulate(check_info[['Date','Debit','Description']], tablefmt='plain', showindex=False)
-	worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
-	
-	# write individual comments
-	for row_name, cell_data in col_data.iteritems():
-		current_cell = current_col_letter + str(row_num)
-
-		if cell_data == True:
-			# Add Comments
-			# https://xlsxwriter.readthedocs.io/working_with_cell_comments.html
-			purchase_info = purchase_data[(purchase_data['Month']==col_name) & (purchase_data['Category']==row_name)]
-
-			purchase_counts = pd.DataFrame(purchase_info['Description'].value_counts()).reset_index()
-			purchase_counts.columns = ['Description','Count']
-
-			purchase_info = purchase_info.pivot_table(index='Description', values='Debit', aggfunc=np.sum).reset_index().sort_values('Debit', ascending=False)
-			#purchase_counts = purchase_info.pivot_table(index='Description', values='Description', aggfunc='count').reset_index().sort_values('Debit', ascending=False)
-			purchase_info = purchase_info.merge(purchase_counts, on='Description')
-			purchase_info.columns = ['Description', 'Debit', 'Count']
-			comment_string = tabulate(purchase_info[['Debit','Count','Description']], tablefmt='plain', showindex=False)
-			worksheet.write_comment(current_cell, comment_string, {'x_scale': 2.5, 'y_scale': 4}) #  'font_size': 10
-		else:
-			pass
-		
-		row_num += 1
-	row_num = 5
-	col_num += 1
-	
-#totals_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
-#for col in range(12, totals_data.shape[0] + 12): # sum of savings
-#	worksheet.write(2, col, totals_data.iloc[col-12])
-
-cell_format = workbook.add_format() # cell w/ border
-cell_format.set_top(2) 
-
-#purc_data = dashboard_data_2.iloc[:,1:].sum() # sum totals
-#purc_data = chart_data[chart_data['Month']>201600].set_index('Month')['Spent'].sort_index(ascending=False)
-purc_data = chart_data.set_index('Month')['Spent'].sort_index(ascending=False)
-for col in range(12, purc_data.shape[0] + 12): # sum of savings
-	worksheet.write(4 + dashboard_data.shape[0], col, purc_data.iloc[col-12], cell_format)
-
-#save_data = dashboard_savings.iloc[:,1:].sum() # sum totals
-#earn_data = chart_data[chart_data['Month']>201600].set_index('Month')['Savings'].sort_index(ascending=False)
-
-earn_data = chart_data.set_index('Month')['Savings'].sort_index(ascending=False)
-for col in range(12, earn_data.shape[0] + 12): # sum of savings
-	worksheet.write(5 + dashboard_data.shape[0], col, earn_data.iloc[col-12])
-
-check_data = chart_data.set_index('Month')['Checking'].sort_index(ascending=False)
-for col in range(12, check_data.shape[0] + 12): # sum of savings
-	worksheet.write(6 + dashboard_data.shape[0], col, check_data.iloc[col-12])
-
-save_data = earn_data - check_data
-for col in range(12, save_data.shape[0] + 12): # sum of savings
-	worksheet.write(7 + dashboard_data.shape[0], col, save_data.iloc[col-12])
-
-for col in range(12, totals_data.shape[0] + 12): # sum of savings
-	worksheet.set_column(col, col, 10)
-
-worksheet.write(4 + dashboard_data.shape[0], 11, purc_data.sum(), cell_format)
-worksheet.write(5 + dashboard_data.shape[0], 11, earn_data.sum())
-worksheet.write(6 + dashboard_data.shape[0], 11, check_data.sum())
-worksheet.write(7 + dashboard_data.shape[0], 11, save_data.sum())
-
-worksheet.write(4 + dashboard_data.shape[0], 10, purchase_data[purchase_data['Year']>=year_cutoff]['Category'].value_counts().sum(), cell_format)
-#worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Year']>=year_cutoff].fillna('-')['Category'].value_counts().sum())
-worksheet.write(5 + dashboard_data.shape[0], 10, savings_data[savings_data['Description']!='Transfer to Checking'].shape[0])
-worksheet.write(6 + dashboard_data.shape[0], 10, savings_data[savings_data['Description']=='Transfer to Checking'].shape[0])
-worksheet.write(7 + dashboard_data.shape[0], 10, '-')
-
-worksheet.write(4 + dashboard_data.shape[0], 9, 'Spent', cell_format)
-worksheet.write(5 + dashboard_data.shape[0], 9, 'Earned')
-worksheet.write(6 + dashboard_data.shape[0], 9, 'Checking Transfer')
-worksheet.write(7 + dashboard_data.shape[0], 9, 'Saved')
-
-worksheet.write(8 + dashboard_data.shape[0], 9, 'To Pay')
-worksheet.write(8 + dashboard_data.shape[0], 10, '-')
-worksheet.write(8 + dashboard_data.shape[0], 11, purc_data.sum() - check_data.sum())
-
-# Create a new chart object.
-chart = workbook.add_chart({'type': 'line'})
-paste_string_1 = '=\'Chart Data\'!$G$2:$G$' + str(chart_data.shape[0] + 2) # data
-paste_string_2 = '=\'Chart Data\'!$A$2:$A$' + str(chart_data.shape[0] + 2) # labels
-chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Savings'})
-
-bar_chart = workbook.add_chart({'type': 'column'})
-paste_string_1 = '=\'Chart Data\'!$D$2:$D$' + str(chart_data.shape[0] + 2) # labels
-paste_string_2 = '=\'Chart Data\'!$A$2:$A$' + str(chart_data.shape[0] + 2) # data
-bar_chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Spent'})
-
-'''
-bar_chart = workbook.add_chart({'type': 'line'})
-paste_string_1 = '=\'Chart Data\'!$B$2:$B$' + str(chart_data.shape[0] + 2) # labels
-paste_string_2 = '=\'Chart Data\'!$A$2:$A$' + str(chart_data.shape[0] + 2) # data
-bar_chart.add_series({'values': paste_string_1, 'categories': paste_string_2, 'name':'Earned'})
-'''
-
-chart.set_title({'name': 'Bank Account'})
-chart.set_x_axis({'name':'YYYYMM', 'label_position':'low'})
-chart.set_y_axis({'name':'Dollars ($)'})
-
-chart.combine(bar_chart)
-
-# insert the chart into the worksheet.
-worksheet.insert_chart('B2', chart)
-
-# pie chart
-pie_chart = workbook.add_chart({'type':'pie'})
-val_string = '=\'Chart Data\'!$J$2:$J$' + str(pie_chart_data.shape[0] + 1)
-cat_string = '=\'Chart Data\'!$I$2:$I$' + str(pie_chart_data.shape[0] + 1)
-pie_chart.add_series({
-    'name':       'Purchases ' + str(year_cutoff) + ' - Now',
-    'categories': cat_string,
-    'values':     val_string,
-})
-
-worksheet.insert_chart('B17', pie_chart)
-
-sheet_names = ['Purchase Data','Savings Data']
-for i in sheet_names:
-	worksheet = writer.sheets[i]
-	worksheet.set_column(0, 0, 4.22)
-	worksheet.set_column(1, 1, 6.44)
-	worksheet.set_column(2, 2, 9.78)
-	worksheet.set_column(3, 3, 11.78)
-	worksheet.set_column(4, 4, 18)
-	worksheet.set_column(5, 5, 52.22)
-
-worksheet = writer.sheets['Chart Data']
-worksheet.set_column(8, 8, 18)
-
-# save database file
 writer.save()
-
 print('done.')
